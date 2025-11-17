@@ -1,0 +1,138 @@
+/*************************************************************
+ * SIMPLE RFID METRO FARE SYSTEM — SINGLE FILE CODE
+ * Hardware:
+ *   - Arduino UNO / ESP32
+ *   - MFRC522 RFID Reader
+ *   - 16x2 LCD (optional)
+ * 
+ * Features:
+ *   - Tap IN = store boarding station
+ *   - Tap OUT = calculate fare
+ *   - Charge based on stations traveled
+ *************************************************************/
+
+#include <SPI.h>
+#include <MFRC522.h>
+#include <LiquidCrystal.h>
+
+// ----- PIN CONFIG -----
+#define RST_PIN 9
+#define SS_PIN 10
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+LiquidCrystal lcd(7, 6, 5, 4, 3, 2);
+
+// ----- SYSTEM VARIABLES -----
+String stations[] = {"A", "B", "C", "D", "E"};   // Example station codes
+int farePerStation = 5;                          // ₹5 per station
+
+struct UserRecord {
+  String uid;
+  String boardingStation;
+};
+
+UserRecord record;
+
+// -----------------------------------------------------------
+// Helper: get card UID as string
+// -----------------------------------------------------------
+String getUID() {
+  String content = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    content.concat(String(rfid.uid.uidByte[i] < 0x10 ? "0" : ""));
+    content.concat(String(rfid.uid.uidByte[i], HEX));
+  }
+  content.toUpperCase();
+  return content;
+}
+
+// -----------------------------------------------------------
+// Setup
+// -----------------------------------------------------------
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  rfid.PCD_Init();
+  lcd.begin(16, 2);
+
+  lcd.print("Metro Ready");
+  delay(1500);
+  lcd.clear();
+}
+
+// -----------------------------------------------------------
+// Loop
+// -----------------------------------------------------------
+void loop() {
+
+  // Wait for a card
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial())
+    return;
+
+  String uid = getUID();
+  Serial.print("Card UID: ");
+  Serial.println(uid);
+
+  if (record.uid != uid) {
+    // If card not seen before, treat as fresh
+    record.uid = uid;
+    record.boardingStation = "";
+  }
+
+  // Ask user to choose station (for demo only)
+  int currentStationIndex = random(0, 5); // Replace with actual station input
+  String currentStation = stations[currentStationIndex];
+
+  // CASE 1: Tap IN
+  if (record.boardingStation == "") {
+    record.boardingStation = currentStation;
+
+    lcd.clear();
+    lcd.print("Tap IN: ");
+    lcd.print(record.boardingStation);
+
+    Serial.println("TAP IN at station: " + record.boardingStation);
+    delay(2000);
+  }
+  else {
+    // CASE 2: Tap OUT
+    String exitStation = currentStation;
+
+    // Calculate distance
+    int startIndex = indexOfStation(record.boardingStation);
+    int endIndex = indexOfStation(exitStation);
+    int stationsTravelled = abs(endIndex - startIndex);
+
+    int fare = stationsTravelled * farePerStation;
+
+    lcd.clear();
+    lcd.print("Tap OUT: ");
+    lcd.print(exitStation);
+    delay(1500);
+    
+    lcd.clear();
+    lcd.print("Fare: Rs ");
+    lcd.print(fare);
+
+    Serial.println("TAP OUT at: " + exitStation);
+    Serial.println("Stations: " + String(stationsTravelled));
+    Serial.println("Fare Charged: Rs " + String(fare));
+
+    record.boardingStation = ""; // reset for next trip
+    delay(3000);
+  }
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+}
+
+
+// -----------------------------------------------------------
+// Helper function: get index of station name
+// -----------------------------------------------------------
+int indexOfStation(String s) {
+  for (int i = 0; i < 5; i++) {
+    if (stations[i] == s) return i;
+  }
+  return 0;
+}
