@@ -1,0 +1,5 @@
+User taps at boarding station → system stores station code in card memory (or RAM).
+
+User taps at exit station → system calculates distance traveled.
+
+Fare is calculated automatically.
